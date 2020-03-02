@@ -381,5 +381,3 @@
 
 	window.PageBuilder = new PageBuilder();
 })();
-
-export default window.PageBuilder;
