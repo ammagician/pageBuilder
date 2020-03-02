@@ -2,61 +2,70 @@
  * Created by andy on 2018/8/20.
  */
 
-
 PageBuilder.enableDebug(true);
 
 PageBuilder.define({
-    "name": "block1",
-    "files": ["blockContent.js", "!css/blockContent.css", "!abs/https://ss0.bdstatic.com/5aV1bjqh_Q23odCf/static/superman/js/lib/jquery-1.10.2_d88366fd.js"],
-    "dependencies": [],
-    "events": {
-        hello: function(source, msg){
-            console.info(source + " say " + msg + " to " + this.name)
-        }
-    }
+	name: 'block1',
+	files: [
+		'blockContent.js',
+		'!css/blockContent.css',
+		'!abs/https://ss0.bdstatic.com/5aV1bjqh_Q23odCf/static/superman/js/lib/jquery-1.10.2_d88366fd.js',
+	],
+	dependencies: [],
+	events: {
+		hello: function(source, msg) {
+			console.info(source + ' say ' + msg + ' to ' + this.name);
+		},
+	},
 });
 
-
-PageBuilder.load("block1", function(deps, block){
-    console.info(block.name + " loaded");
-    block.renderTo(document.getElementById("one"));
-});
+PageBuilder.load('block1').then(
+	(block, deps) => {
+		block.renderTo('one');
+		block.start();
+	},
+	err => {
+		console.error(err);
+	},
+);
 
 PageBuilder.define({
-    "name": "block2",
-    "files": ["blockContent2.js"],
-    "dependencies": ["block1"],
-    "events": {
-        hello: function(source, msg){
-            console.info(source + " say " + msg + " to " + this.name)
-        }
-    }
+	name: 'block2',
+	files: ['blockContent2.js'],
+	dependencies: ['block1'],
+	events: {
+		hello: function(source, msg) {
+			console.info(source + ' say ' + msg + ' to ' + this.name);
+		},
+	},
+	domId: 'two',
 });
 
-
-PageBuilder.load("block2", function(deps, block){
-    console.info(block.name + " loaded");
-    block.renderTo(document.getElementById("two"));
-});
+PageBuilder.load('block2').then(
+	(block, deps) => {
+		block.on('hello', function(source, msg) {
+			console.info(source + ' say ' + msg + ' to ' + this.name);
+		});
+		block.renderTo();
+	},
+	err => {
+		console.error(err);
+	},
+);
 
 PageBuilder.define({
-    //Ä£¿éÃû³Æ£¬ĞèÒª±£Ö¤Î¨Ò»
-    "name": "block3",
-    //Ä£¿é½Å±¾ÎÄ¼ş£¬CSSÊ¹ÓÃ!css/¿ªÍ·£¬ÍâÍø½Å±¾Ê¹ÓÃ!abs/¿ªÍ·
-    "files": [],
-    //Ä£¿éÒÀÀµ
-    "dependencies": [],
-    //¼àÌıÊÂ¼ş£¬Í¬addEventListener¡£¿ÉÑ¡
-    "events": {
-        hello: function(source, msg){
-            console.info(source + " say " + msg + " to " + this.name)
-        }
-    },
-    //äÖÈ¾Ä¿±êdom¡£¿ÉÑ¡
-    dom: "three",
-    //Æô¶¯»Øµ÷ÊÂ¼ş£¬Í¬registerÊ±×¢²áĞ§¹ûÒ»Ñù¡£¿ÉÑ¡
-    launch: function(depends, block){
-        console.info("launch");
-    }
+	//æ¨¡å—åç§°ï¼Œéœ€è¦ä¿è¯å”¯ä¸€
+	name: 'block3',
+	//æ¨¡å—è„šæœ¬æ–‡ä»¶ï¼ŒCSSä½¿ç”¨!css/å¼€å¤´ï¼Œå¤–ç½‘è„šæœ¬ä½¿ç”¨!abs/å¼€å¤´
+	files: [],
+	//æ¨¡å—ä¾èµ–
+	dependencies: [],
+	//ç›‘å¬äº‹ä»¶ï¼ŒåŒaddEventListenerã€‚å¯é€‰
+	events: {
+		hello: function(source, msg) {
+			console.info(source + ' say ' + msg + ' to ' + this.name);
+		},
+	},
+	//æ¸²æŸ“ç›®æ ‡domã€‚å¯é€‰ã€‚å¦‚æœæ²¡æœ‰æ¸²æŸ“è¦æ±‚ï¼Œåˆ™ä¸ºéç•Œé¢çš„ä¸€ä¸ªBlock
+	domId: '',
 });
-

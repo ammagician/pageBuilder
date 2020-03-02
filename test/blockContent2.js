@@ -2,24 +2,29 @@
  * Created by andy on 2018/8/20.
  */
 
-PageBuilder.register("block2", function(deps, block){
-    block.render = function(dom){
-        dom.innerText = block.name;
-    };
+PageBuilder.register('block2', {
+	onLoad: function(block, depends) {
+		block.emit('hello', 'all', '大家好');
 
-    block.start = function(){
-        console.info(this.name + " start");
-    };
+		PageBuilder.on('block2', 'hello3', function(source, msg) {
+			console.info(`${source} say ${msg} to ${this.name}`);
+		});
+		PageBuilder.emit('hello3', 'block2', 'block1', '你好呀');
+	},
+	render: function(domId, block, depends) {
+		let dom = document.getElementById(domId);
+		dom.innerText = block.name;
+	},
+	onStart: function(block, depends) {
+		console.info('on start');
+	},
 
-    block.stop = function(){
-        console.info(this.name + " stop");
-    };
+	onStop: function(block, depends) {
+		console.info('on stop');
+		PageBuilder.off('block1', 'hello3');
+	},
 
-    block.addEventListener("say", function(source, msg){
-        console.info(source + " say " + msg + " to " + this.name);
-    });
-
-    block.broadcast("all", "hello", "大家好");
-
-    PageBuilder.broadcast("block2", "block1", "say", "你好呀")
+	onClear: function(block, depends) {
+		console.info('on clear');
+	},
 });

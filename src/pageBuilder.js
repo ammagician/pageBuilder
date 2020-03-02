@@ -2,353 +2,384 @@
  * Created by andy on 2018/8/20.
  */
 
-(function(){
-    var loadFile = function(files, callback){
-        if(files.length == 0){
-            callback && callback();
-            return;
-        }
+(function() {
+	const loadFiles = function(files) {
+		const count = files.length;
+		if (count == 0) {
+			return new Promise((resolve, reject) => {
+				resolve();
+			});
+		}
 
-        var count = 0;
-        var loadedCount = 0;
-        var timestamp = "" + new Date().getTime();
+		const ps = [];
+		const timestamp = `${new Date().getTime()}`;
 
-        for(var i= 0,len=files.length; i<len; i++){
-            var f = files[i];
-            var isCss = f.indexOf("!css") === 0;
-            if(isCss){
-                f = f.substring(4);
-            }
+		for (let i = 0, len = files.length; i < len; i += 1) {
+			let f = files[i];
+			const isCss = f.indexOf('!css') === 0;
+			if (isCss) {
+				f = f.substring(4);
+			}
 
-            var isAbs = f.indexOf("!abs") === 0;
-            var path = isAbs? f.substring(5) : f;
-            if(path.indexOf("/") == 0){
-                path = path.substring(1);
-            }
+			const isAbs = f.indexOf('!abs') === 0;
+			let path = isAbs ? f.substring(5) : f;
+			if (path.indexOf('/') == 0) {
+				path = path.substring(1);
+			}
 
-            path += "?_" + timestamp;
+			path += `?_${timestamp}`;
 
-            var head = document.getElementsByTagName("head")[0];
+			const head = document.getElementsByTagName('head')[0];
 
-            var ele;
-            if(isCss){
-                ele = document.createElement("link");
-                ele.rel = "stylesheet";
-                ele.href = path;
-                debugger
-            }else{
-                ele = document.createElement("script");
-                ele.type = "text/javascript";
-                ele.src = path;
-            }
+			var ele;
+			if (isCss) {
+				ele = document.createElement('link');
+				ele.rel = 'stylesheet';
+				ele.href = path;
+			} else {
+				ele = document.createElement('script');
+				ele.type = 'text/javascript';
+				ele.src = path;
+			}
 
-            count++;
-            if(ele.readyState){
-                // IE
-                ele.onreadystatechange = function(){
-                    if(ele.readyState == 'loaded' || ele.readyState == 'complete'){
-                        loadedCount++;
-                        if(loadedCount > 0 && loadedCount === count){
-                            callback && callback();
-                        }
-                    }
-                };
-            }else{
-                ele.onload = function(e){
-                    loadedCount++;
-                    if(loadedCount > 0 && loadedCount === count){
-                        callback && callback();
-                    }
-                }
-            }
+			const promise = new Promise((resolve, reject) => {
+				if (ele.readyState) {
+					ele.onreadystatechange = function() {
+						if (
+							ele.readyState == 'loaded' ||
+							ele.readyState == 'complete'
+						) {
+							resolve();
+						}
+					};
+				} else {
+					ele.onload = function(e) {
+						resolve();
+					};
+				}
 
-            head.appendChild(ele);
-        }
-    };
+				head.appendChild(ele);
+			});
 
-    var Block = function(config, builder){
-        config = config || {};
-        this.name = config.name;
-        this.dependencies = config.dependencies || [];
-        this.files = config.files || [];
-        this.state = "ready";
-        this.builder = builder;
-        this.events = config.events || {};
-        this.launchFn = config.launch;
-        this.inited = false;
-        this.loadedFns = [];
-        this.renderDom = [];
+			ps.push(promise);
+		}
+		return Promise.all(ps);
+	};
 
-        if(config.dom){
-            if(typeof config.dom === "string"){
-                config.dom = document.getElementById(config.dom);
-            }
-            this.renderDom.push(config.dom);
-        }
+	const loadDependencies = (block, builder) => {
+		const depends = block.dependencies;
+		const ps = [];
+		for (let i = 0, count = depends.length; i < count; i = i + 1) {
+			const promise = builder.load(depends[i]);
+			ps.push(promise);
+		}
 
-        if(this.builder.debug){
-            console.info("Block[" + this.name + "] created");
-        }
-    };
+		return Promise.all(ps);
+	};
 
-    Block.prototype = {
-        //·¢Æð¹ã²¥, targetÎªallÊ±Í¨ÖªËùÓÐBlock
-        broadcast: function(target, eventName, data){
-            if(this.builder.debug){
-                console.info("Block[" + this.name + "] broadcast event[" + eventName + "] to " + target);
-            }
+	const findBlocks = (names = [], blocks) => {
+		const bs = [];
+		for (let i = 0, len = names.length; i < len; i = i + 1) {
+			const block = blocks[names[i]];
+			bs.push(block);
+		}
+		return bs;
+	};
 
-            this.builder.broadcast(this.name, target, eventName, data);
-        },
+	const callEvent = (eventName, block, source, data) => {
+		block.events[eventName] &&
+			block.events[eventName].call(block, source, data);
+	};
 
-        //Çå³ýBlock
-        clear: function(callback){
-            if(this.builder.debug){
-                console.info("Block[" + this.name + "] clear");
-            }
-            this.stop && this.stop();
+	const Block = function(config, builder) {
+		config = config || {};
+		this.name = config.name;
+		this.dependencies = config.dependencies || [];
+		this.files = config.files || [];
+		this.state = 'ready';
+		this.builder = builder;
+		this.events = config.events || {};
+		this.domId = config.domId || '';
+		this.timers = {};
 
-            delete this.builder[this.name];
-            this.builder = null;
-            this.events = {};
-            this.launchFn = null;
-            this.loadedFns = [];
+		if (this.builder.debug) {
+			console.info(`Block[${this.name}] define`);
+		}
+	};
 
-            for(var i= 0,len=this.renderDom.length; i<len; i++){
-                this.renderDom[i].innerHTML = "";
-            }
+	Block.prototype = {
+		// è°ƒç”¨æ‰€æ³¨å†Œçš„startæ–¹æ³•,å¯ç”¨äºŽæ¿€æ´»å®šæ—¶å™¨ç­‰, ç›´æŽ¥è°ƒç”¨ä¸å‘é€å…¨ä½“å¹¿æ’­
+		start() {
+			console.info(`Block[${this.name}] start`);
+			if (this.onStart) {
+				const depends = findBlocks(
+					this.dependencies,
+					this.builder.blocks,
+				);
+				this.onStart(this, depends);
+			}
+		},
 
-            this.renderDom = [];
-            this.render = null;
+		// è°ƒç”¨æ‰€æ³¨å†Œçš„stopæ–¹æ³•,å¯ç”¨äºŽæ¸…é™¤å®šæ—¶å™¨ã€è¯·æ±‚ç­‰, ç›´æŽ¥è°ƒç”¨ä¸å‘é€å…¨ä½“å¹¿æ’­
+		stop() {
+			console.info(`Block[${this.name}] stop`);
+			if (this.onStop) {
+				const depends = findBlocks(
+					this.dependencies,
+					this.builder.blocks,
+				);
+				this.onStop(this, depends);
+			}
+		},
 
-            callback && callback(this);
-        },
+		// æ¸…é™¤Block,ä¼šæŠŠè¯¥blockæ³¨å†Œçš„eventæ¸…é™¤
+		clear() {
+			if (this.builder.debug) {
+				console.info(`Block[${this.name}] clear`);
+			}
 
-        //µ÷ÓÃËù×¢²áµÄstart·½·¨,¿ÉÓÃÓÚ¼¤»î¶¨Ê±Æ÷µÈ, Ö±½Óµ÷ÓÃ²»·¢ËÍÈ«Ìå¹ã²¥
-        start: function(){
-            console.warn("start function is empty!");
-        },
+			this.stop();
+			const dom = document.getElementById(this.domId);
+			if (dom) {
+				dom.innerHTML = '';
+			}
 
-        //µ÷ÓÃËù×¢²áµÄstop·½·¨,¿ÉÓÃÓÚÇå³ý¶¨Ê±Æ÷¡¢ÇëÇóµÈ, Ö±½Óµ÷ÓÃ²»·¢ËÍÈ«Ìå¹ã²¥
-        stop: function(){
-            console.warn("stop function is empty!");
-        },
+			this.events = {};
 
-        //Ìí¼Ó¼àÌýÊÂ¼þ
-        addEventListener: function(name, event){
-            this.events[name] = event;
+			if (this.onClear) {
+				this.onClear();
+			}
+		},
 
-            if(this.builder.debug){
-                console.info("Block[" + this.name + "] add event " + name);
-            }
-        },
+		// æ·»åŠ ç›‘å¬äº‹ä»¶
+		on(name, event) {
+			this.events[name] = event;
+			if (this.builder.debug) {
+				console.info(`Block[${this.name}] add event ${name}`);
+			}
+		},
 
-        //äÖÈ¾Blockµ½dom
-        renderTo: function(dom){
-            this.renderDom.push(dom);
+		// ç§»é™¤ç›‘å¬äº‹ä»¶
+		off(name) {
+			this.events[name] = null;
 
-            if(this.inited){
-                this._renderTo(dom);
-            }
-        },
+			if (this.builder.debug) {
+				console.info(`Block[${this.name}] remove event ${name}`);
+			}
+		},
 
-        _callEvent: function(source, eventName, data){
-            this.events[eventName] && this.events[eventName].call(this, source, data);
-        },
+		// å‘èµ·å¹¿æ’­, targetä¸ºallæ—¶é€šçŸ¥æ‰€æœ‰Block
+		emit(eventName, target, data) {
+			if (this.builder.debug) {
+				console.info(
+					`Block[${this.name}] emit event[${eventName}] to ${target}`,
+				);
+			}
 
-        _launch: function(){
-            if(this.builder.debug){
-                console.info("Block[" + this.name + "] launch");
-            }
+			this.builder.broadcast(this.name, target, eventName, data);
+		},
 
-            if(typeof this.launchFn === "function"){
-                var depends = this.builder._getBlocks(this.dependencies);
-                this.launchFn(depends, this);
-            }
+		// æ¸²æŸ“Blockåˆ°dom
+		renderTo(domId) {
+			this.domId = domId || this.domId;
+			if (this.state == 'loaded') {
+				if (this.render) {
+					const depends = findBlocks(
+						this.dependencies,
+						this.builder.blocks,
+					);
+					this.render(this.domId, this, depends);
+					console.info(
+						`Block[${this.name}] render to #${this.domId}`,
+					);
+				} else {
+					console.info(`Block[${this.name}] render is empty`);
+				}
+			}
+		},
+	};
 
-            this.inited = true;
+	const PageBuilder = function() {
+		this.blocks = {};
+		this.loadFile = {};
+		this.debug = false;
+	};
 
-            for(var i= 0,len=this.renderDom.length; i<len; i++){
-                var dom = this.renderDom[i];
-                this._renderTo(dom);
-            }
+	PageBuilder.prototype = {
+		// æ‰¹é‡å®šä¹‰Block, è¿œç¨‹åŠ è½½æœåŠ¡ç«¯æ³¨å†Œçš„é…ç½®ï¼Œå®žçŽ°å¾®æœåŠ¡æ¨¡å¼
+		init(blocks) {
+			blocks = blocks || [];
+			for (let i = 0, len = blocks.length; i < len; i += 1) {
+				const b = blocks[i];
+				this.define(b);
+			}
+		},
 
-            this.start && this.start();
-        },
+		// å®šä¹‰Block
+		define(config) {
+			if (
+				!config ||
+				typeof config.name !== 'string' ||
+				config.name === ''
+			) {
+				console.error('Name of Page Block is wrong!');
+				return;
+			}
 
-        _renderTo: function(dom){
-            this.render && this.render(dom);
-        },
+			const { name } = config;
+			if (this.blocks[name]) {
+				console.warn(`Page Block is exist! -----  ${name}`);
+				return;
+			}
 
-        render: function(dom){
-            console.warn("render function is empty!");
-        }
-    };
+			const block = new Block(config, this);
+			this.blocks[name] = block;
+		},
 
-    var PageBuilder = function(){
-        this.blocks = {};
-        this.debug = false;
-    };
+		// æ³¨å†ŒBlockæ–¹æ³•ï¼Œä¹Ÿå°±æ˜¯Blockçš„å…¥å£, eventsä¸ºç”Ÿå‘½å‡½æ•°onLoad/onStart/onStop/onClear/render
+		register(name, events) {
+			const block = this.blocks[name];
+			if (!block) {
+				console.error(`Page Block is not defined! -----  ${name}`);
+				return;
+			}
 
-    PageBuilder.prototype = {
-        //ÅúÁ¿¶¨ÒåBlock, Ô¶³Ì¼ÓÔØ·þÎñ¶Ë×¢²áµÄÅäÖÃ£¬ÊµÏÖÎ¢·þÎñÄ£Ê½
-        init: function(blocks){
-            blocks = blocks || [];
-            for(var i= 0,len=blocks.length; i<len; i++){
-                var b = blocks[i];
-                this.define(b);
-            }
-        },
+			for (let a in events) {
+				if (typeof events[a] === 'function') {
+					block[a] = events[a];
+				}
+			}
+		},
 
-        //¶¨ÒåBlock
-        define: function(config){
-            if(!config || typeof config.name !== "string" || config.name === ""){
-                console.error("Name of Page Block is wrong!");
-                return;
-            }
+		// åŠ è½½å®Œæ¯•åŽ,è¿”å›žpromiseå‚æ•°ä¸º(block, depends)
+		load(name) {
+			const that = this;
+			const block = that.blocks[name];
+			if (!block) {
+				return new Promise((resolve, reject) => {
+					reject(`Block ${name} is not defined!`);
+				});
+			}
+			return new Promise((resolve, reject) => {
+				const cb = function() {
+					that.loadFile[name] = true;
+					block.state = 'loaded';
+					const depends = findBlocks(block.dependencies, that.blocks);
+					that.broadcast(
+						name,
+						'all',
+						'loaded',
+						`Block[${name}] loaded`,
+					);
 
-            var name = config.name;
-            if(this.blocks[name]){
-                console.warn("Page Block is exist! -----  " + name);
-                return;
-            }
+					if (block.onLoad) {
+						block.onLoad(block, depends);
+					}
 
-            var block = new Block(config, this);
-            this.blocks[name] = block;
-        },
+					resolve(block, depends);
+				};
 
-        _loadDependencies: function(block, callback){
-            var depends = block.dependencies;
-            var count = depends.length;
-            var loadedCount = 0;
-            var that = this;
+				if (block.state == 'loaded' || this.loadFile[name]) {
+					cb();
+				} else if (block.state == 'ready') {
+					block.state = 'loading';
+					if (block.dependencies && block.dependencies.length > 0) {
+						loadDependencies(block, that).then(() => {
+							loadFiles(block.files).then(() => {
+								cb();
+							});
+						});
+					} else {
+						loadFiles(block.files).then(() => {
+							cb();
+						});
+					}
+				}
+			});
+		},
 
-            for(var i= 0,len=depends.length; i<len; i++){
-                var dep = depends[i];
-                this.load(dep, function(){
-                    loadedCount++;
+		// æ·»åŠ ç›‘å¬äº‹ä»¶
+		on(name, eventName, event) {
+			const block = this.blocks[name];
+			if (block) {
+				block.on(eventName, event);
+			}
+		},
 
-                    if(loadedCount === count){
-                        that._loadFiles(block, callback);
-                    }
-                });
-            }
-        },
+		// åˆ é™¤ç›‘å¬äº‹ä»¶
+		off(name, eventName) {
+			const block = this.blocks[name];
+			if (block) {
+				block.off(eventName);
+			}
+		},
 
-        _loadFiles: function(block, callback){
-            loadFile(block.files, callback);
-        },
+		// å‘èµ·å¹¿æ’­, targetä¸ºallæ˜¯é€šçŸ¥æ‰€æœ‰Block
+		emit(eventName, source, target, data) {
+			source = source || 'PageBuilder';
+			let { blocks } = this;
 
-        _getBlocks: function(names){
-            var blocks = [];
-            for(var i= 0,len=names.length; i<len; i++){
-                var block = this.blocks[names];
-                blocks.push(block);
-            }
+			if (target !== 'all' && this.blocks[target]) {
+				const bs = {};
+				bs[target] = this.blocks[target];
+				blocks = bs;
+			}
 
-            return blocks;
-        },
+			for (const b in blocks) {
+				if (b != source) {
+					callEvent(eventName, blocks[b], source, data);
+				}
+			}
+		},
 
-        //·¢Æð¹ã²¥, targetÎªallÊÇÍ¨ÖªËùÓÐBlock
-        broadcast: function(source, target, eventName, data){
-            source = source || "PageBuildBlock";
-            var blocks = this.blocks;
+		// å¯åŠ¨block, å‘é€å…¨ä½“å¹¿æ’­
+		startBlock(name) {
+			const block = this.blocks[name];
+			if (block) {
+				block.start();
+				this.emit('start', name, 'all', `Block[${name}] start`);
+			}
+		},
 
-            if(target !== "all" && this.blocks[target]){
-                blocks = [this.blocks[target]];
-            }
+		// åœæ­¢block, å‘é€å…¨ä½“å¹¿æ’­
+		stopBlock(name) {
+			const block = this.blocks[name];
+			if (block) {
+				block.stop();
+				this.emit('stop', name, 'all', `Block[${name}] stop`);
+			}
+		},
 
-            for(var b in blocks){
-                if(b != source){
-                    blocks[b]._callEvent(source, eventName, data);
-                }
-            }
-        },
+		// æ¸…é™¤block, ä¼šæŠŠè¯¥blockæ³¨å†Œçš„eventæ¸…é™¤
+		clearBlock(name) {
+			const block = this.blocks[name];
+			if (block) {
+				block.clear();
+			}
+		},
 
-        //Ìí¼Ó¼àÌýÊÂ¼þ
-        addEventListener: function(name, eventName, event){
-            var block = this.blocks[name];
-            if(block){
-                block.addEventListener(eventName, event);
-            }
-        },
+		// å¼€å¯è°ƒè¯•æ¨¡å¼ï¼Œæ‰“å°è°ƒç”¨è¿‡ç¨‹
+		enableDebug(enable) {
+			this.debug = !!enable;
+		},
 
-        //¼ÓÔØÍê±ÏºóÖ´ÐÐ×¢²áµÄlaunch·½·¨
-        load: function(name, callback){
-            var block = this.blocks[name];
-            var that = this;
-            var cb = function(){
-                block.state = "loaded";
-                var depends = that._getBlocks(block.dependencies);
-                for(var i= 0,len=block.loadedFns.length; i<len; i++){
-                    var loadedFn = block.loadedFns[i];
-                    loadedFn && loadedFn(depends, block);
-                }
+		// è®¾ç½®å…±äº«æ•°æ®
+		setState(states) {
+			this.states = { ...this.states, ...states };
+		},
 
-                block._launch();
+		// èŽ·å–å…±äº«æ•°æ®
+		getState(key) {
+			return this.states[key];
+		},
 
-                that.broadcast(name, "all", "launch", "Block[" + name + "] launched")
-            };
+		// æ›´æ–°æµè§ˆå™¨title
+		updateTitle(title) {
+			document.title = title;
+		},
+	};
 
-            if(block){
-                block.loadedFns.push(callback);
-                if(block.state == "loaded"){
-                    var depends = this._getBlocks(block.dependencies);
-                    cb && cb(depends, block);
-                }else if(block.state == "ready"){
-                    console.info("loading " + block.name);
-                    block.state = "loading";
-                    if(block.dependencies && block.dependencies.length > 0){
-                        this._loadDependencies(block, cb);
-                    }else{
-                        this._loadFiles(block, cb);
-                    }
-                }
-            }
-        },
-
-        //×¢²áBlock·½·¨£¬Ò²¾ÍÊÇBlockµÄÈë¿Ú, fnÎªlaunchº¯Êý
-        register: function(name, fn){
-            var block = this.blocks[name];
-            if(!block){
-                console.error("Page Block is not defined! -----  " + name);
-                return;
-            }
-
-            block.launchFn = fn;
-        },
-
-        //Æô¶¯block, ·¢ËÍÈ«Ìå¹ã²¥
-        startBlock: function(name){
-            var block = this.blocks[name];
-            if(block){
-                block.start();
-                this.broadcast(name, "all", "start", "Block[" + name + "] start");
-            }
-        },
-
-        //Í£Ö¹block, ·¢ËÍÈ«Ìå¹ã²¥
-        stopBlock: function(name){
-            var block = this.blocks[name];
-            if(block){
-                block.stop();
-                this.broadcast(name, "all", "stop", "Block[" + name + "] stop");
-            }
-        },
-
-        //Çå³ýblock
-        clearBlock: function(name, callback){
-            var block = this.blocks[name];
-            if(block){
-                block.clear(callback);
-            }
-        },
-
-        //¿ªÊ¼µ÷ÊÔÄ£Ê½£¬´òÓ¡µ÷ÓÃ¹ý³Ì
-        enableDebug: function(enable){
-            this.debug = !!enable;
-        }
-    };
-
-    window.PageBuilder = new PageBuilder();
+	window.PageBuilder = new PageBuilder();
 })();
+
+export default window.PageBuilder;
